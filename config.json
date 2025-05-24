@@ -1,0 +1,22 @@
+{
+    "database": {
+        "server": "localhost\\SQLEXPRESS",
+        "database": "SAGE_COMPTA",
+        "user": "sa",
+        "password": "VotreMotDePasse",
+        "options": {
+            "trustServerCertificate": true,
+            "encrypt": false,
+            "enableArithAbort": true
+        }
+    },
+    "api": {
+        "url": "https://sk.digita.sn/api/sage",
+        "key": "sk-digitanalh2HRpxrDVJ6bkk5Gy0iHehnf6i9Czhtiv7rG82REOENWLzK42Sv6qGW04cLz4j3hhyf44yJ3d8jShdudGl9NzvuGUfQHPkiHg1YtUL9dEWsbZ55yrJYY"
+    },
+    "sync": {
+        "interval": 300,
+        "batchSize": 50,
+        "deleteAfterSync": false
+    }
+}

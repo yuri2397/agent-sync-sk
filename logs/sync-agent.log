@@ -1,0 +1,8 @@
+2025-05-23T19:49:39.120Z INFO: Configuration chargée avec succès
+2025-05-23T19:49:39.122Z INFO: Démarrage de l'agent de synchronisation SK-APP
+2025-05-23T19:49:54.128Z ERROR: Erreur de connexion à SQL Server: Failed to connect to localhost\SQLEXPRESS in 15000ms
+2025-05-23T19:49:54.178Z ERROR: Erreur de connexion à l'API Laravel: getaddrinfo ENOTFOUND sk.digita.sn
+2025-05-23T19:51:18.909Z INFO: Configuration chargée avec succès
+2025-05-23T19:51:18.911Z INFO: Démarrage de l'agent de synchronisation SK-APP
+2025-05-23T19:51:33.919Z ERROR: Erreur de connexion à SQL Server: Failed to connect to localhost\SQLEXPRESS in 15000ms
+2025-05-23T19:51:33.955Z ERROR: Erreur de connexion à l'API Laravel: getaddrinfo ENOTFOUND sk.digita.sn

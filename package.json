@@ -1,0 +1,21 @@
+{
+    "name": "sage-laravel-sync-agent",
+    "version": "1.0.0",
+    "description": "Agent de synchronisation entre Sage Compta (SQL Server) et une application Laravel",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js",
+        "dev": "nodemon index.js",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "axios": "^1.6.7",
+        "mssql": "^10.0.2",
+        "winston": "^3.11.0"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.3"
+    }
+}
