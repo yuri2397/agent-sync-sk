@@ -240,3 +240,4 @@ Les logs sont stockés dans le dossier `logs/sync-agent.log`. Ils contiennent de
 ## Licence
 
 ISC
+# agent-sync-sk
