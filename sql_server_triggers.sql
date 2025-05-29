@@ -25,10 +25,9 @@ BEGIN
             CT_EMail AS email,
             CT_Telephone AS phone,
             CONCAT(CT_Adresse, ' ', CT_Complement) AS address,
-            N_CatTarif AS payment_delay, -- À adapter selon votre structure
-            CT_Devise AS currency,
+            N_CatTarif AS payment_delay,
             CT_Encours AS credit_limit,
-            30 AS max_days_overdue, -- Valeur par défaut, à adapter
+            30 AS max_days_overdue,
             CASE 
                 WHEN CT_Qualite = 'FIDELE' THEN 'low'
                 WHEN CT_Qualite = 'PROSPECT' THEN 'medium'
@@ -48,7 +47,6 @@ BEGIN
             phone = source.phone,
             address = source.address,
             payment_delay = source.payment_delay,
-            currency = source.currency,
             credit_limit = source.credit_limit,
             max_days_overdue = source.max_days_overdue,
             risk_level = source.risk_level,
@@ -59,13 +57,13 @@ BEGIN
     WHEN NOT MATCHED THEN
         INSERT (
             sage_id, code, company_name, contact_name, email, phone, address,
-            payment_delay, currency, credit_limit, max_days_overdue, risk_level,
+            payment_delay, credit_limit, max_days_overdue, risk_level,
             notes, is_active, synced
         )
         VALUES (
             source.sage_id, source.code, source.company_name, source.contact_name,
             source.email, source.phone, source.address, source.payment_delay,
-            source.currency, source.credit_limit, source.max_days_overdue,
+            source.credit_limit, source.max_days_overdue,
             source.risk_level, source.notes, source.is_active, 0
         );
 END;
@@ -116,7 +114,6 @@ BEGIN
             reference = source.reference,
             type = source.type,
             invoice_date = source.invoice_date,
-            currency = source.currency,
             total_amount = source.total_amount,
             notes = source.notes,
             created_by = source.created_by,
@@ -125,11 +122,11 @@ BEGIN
     WHEN NOT MATCHED THEN
         INSERT (
             sage_id, invoice_number, customer_sage_id, reference, type,
-            invoice_date, currency, total_amount, notes, created_by, synced
+            invoice_date, total_amount, notes, created_by, synced
         )
         VALUES (
             source.sage_id, source.invoice_number, source.customer_sage_id,
-            source.reference, source.type, source.invoice_date, source.currency,
+            source.reference, source.type, source.invoice_date,
             source.total_amount, source.notes, source.created_by, 0
         );
     
