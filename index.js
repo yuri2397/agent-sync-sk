@@ -2,7 +2,7 @@
  * Agent de synchronisation entre SQL Server (Sage) et Laravel
  * 
  * Ce script se connecte à une base SQL Server, extrait les données des tables
- * anonymes_customers et anonymes_invoices, puis les envoie à une API Laravel.
+ * anonymes_customers, anonymes_invoices et anonymes_due_dates, puis les envoie à une API Laravel.
  */
 
 const sql = require('mssql');
@@ -46,10 +46,10 @@ try {
     // Créer un fichier de configuration par défaut
     const defaultConfig = {
         database: {
-            server: 'localhost\\SQLEXPRESS',
-            database: 'SAGE_COMPTA',
+            server: 'localhost',
+            database: 'SK DISTRIBUTION ELACTRON',
             user: 'sa',
-            password: 'ChangeMe',
+            password: 'Matrix@2397!',
             options: {
                 trustServerCertificate: true,
                 encrypt: false,
@@ -57,8 +57,8 @@ try {
             }
         },
         api: {
-            "url": "https://sk.digita.sn/api/sage",
-            "key": "sk-digitanalh2HRpxrDVJ6bkk5Gy0iHehnf6i9Czhtiv7rG82REOENWLzK42Sv6qGW04cLz4j3hhyf44yJ3d8jShdudGl9NzvuGUfQHPkiHg1YtUL9dEWsbZ55yrJYY"
+            url: 'https://sk-cloud-api-app.digita.sn/api/sage',
+            key: 'sk-digitanalh2HRpxrDVJ6bkk5Gy0iHehnf6i9Czhtiv7rG82REOENWLzK42Sv6qGW04cLz4j3hhyf44yJ3d8jShdudGl9NzvuGUfQHPkiHg1YtUL9dEWsbZ55yrJYY'
         },
         sync: {
             interval: 300, // Intervalle de synchronisation en secondes (5 minutes)
@@ -146,8 +146,13 @@ async function syncCustomers() {
 
         // Récupérer les clients non synchronisés
         const result = await pool.request()
-            .query(`SELECT TOP ${config.sync.batchSize} * FROM anonymes_customers 
-              WHERE synced = 0 OR synced IS NULL`);
+            .query(`SELECT TOP ${config.sync.batchSize} 
+                sage_id, code, company_name, contact_name, email, phone, address,
+                payment_delay, currency, credit_limit, max_days_overdue, risk_level,
+                notes, is_active
+                FROM anonymes_customers 
+                WHERE synced = 0 OR synced IS NULL
+                ORDER BY id`);
 
         const customers = result.recordset;
 
@@ -172,16 +177,16 @@ async function syncCustomers() {
 
             if (syncedIds.length > 0) {
                 // Construire la clause IN pour la requête SQL
-                const idPlaceholders = syncedIds.map(() => '?').join(',');
+                const idList = syncedIds.map(id => `'${id}'`).join(',');
 
                 // Marquer les clients comme synchronisés
                 if (config.sync.deleteAfterSync) {
                     await pool.request()
-                        .query(`DELETE FROM anonymes_customers WHERE sage_id IN (${idPlaceholders})`, [...syncedIds]);
+                        .query(`DELETE FROM anonymes_customers WHERE sage_id IN (${idList})`);
                     logger.info(`${syncedIds.length} clients supprimés après synchronisation`);
                 } else {
                     await pool.request()
-                        .query(`UPDATE anonymes_customers SET synced = 1, sync_date = GETDATE() WHERE sage_id IN (${idPlaceholders})`, [...syncedIds]);
+                        .query(`UPDATE anonymes_customers SET synced = 1, sync_date = GETDATE() WHERE sage_id IN (${idList})`);
                     logger.info(`${syncedIds.length} clients marqués comme synchronisés`);
                 }
             }
@@ -211,10 +216,30 @@ async function syncInvoices() {
         // Connexion à SQL Server
         pool = await sql.connect(sqlConfig);
 
-        // Récupérer les factures non synchronisées
+        // Récupérer les factures non synchronisées avec leurs échéances
         const invoicesResult = await pool.request()
-            .query(`SELECT TOP ${config.sync.batchSize} * FROM anonymes_invoices 
-              WHERE synced = 0 OR synced IS NULL`);
+            .query(`SELECT TOP ${config.sync.batchSize} 
+                i.sage_id, i.invoice_number, i.customer_sage_id, i.reference, i.type,
+                i.invoice_date, i.currency, i.total_amount, i.notes, i.created_by,
+                -- Sous-requête pour récupérer les échéances au format JSON
+                (
+                    SELECT 
+                        FORMAT(dd.due_date, 'yyyy-MM-dd') AS due_date,
+                        dd.amount
+                    FROM anonymes_due_dates dd 
+                    WHERE dd.invoice_sage_id = i.sage_id
+                      AND (dd.synced = 0 OR dd.synced IS NULL)
+                    ORDER BY dd.due_date
+                    FOR JSON PATH
+                ) AS due_dates_json
+                FROM anonymes_invoices i
+                WHERE (i.synced = 0 OR i.synced IS NULL)
+                  AND EXISTS (
+                      SELECT 1 FROM anonymes_due_dates dd 
+                      WHERE dd.invoice_sage_id = i.sage_id 
+                        AND (dd.synced = 0 OR dd.synced IS NULL)
+                  )
+                ORDER BY i.invoice_date DESC`);
 
         const invoices = invoicesResult.recordset;
 
@@ -225,34 +250,33 @@ async function syncInvoices() {
 
         logger.info(`${invoices.length} factures trouvées à synchroniser`);
 
-        // Pour chaque facture, récupérer ses échéances
-        const formattedInvoices = [];
+        // Formater les factures pour l'API avec parsing des échéances JSON
+        const formattedInvoices = invoices.map(invoice => ({
+            sage_id: invoice.sage_id,
+            invoice_number: invoice.invoice_number,
+            customer_sage_id: invoice.customer_sage_id,
+            reference: invoice.reference,
+            type: invoice.type,
+            invoice_date: invoice.invoice_date,
+            currency: invoice.currency,
+            total_amount: invoice.total_amount,
+            notes: invoice.notes,
+            created_by: invoice.created_by,
+            due_dates: invoice.due_dates_json ? JSON.parse(invoice.due_dates_json) : []
+        }));
 
-        for (const invoice of invoices) {
-            // Récupérer les échéances de la facture
-            const dueDatesResult = await pool.request()
-                .input('invoiceId', sql.Int, invoice.id)
-                .query(`SELECT * FROM anonymes_due_dates WHERE invoice_id = @invoiceId`);
+        // Validation des totaux avant envoi
+        let validationErrors = 0;
+        formattedInvoices.forEach(invoice => {
+            const totalDueDates = invoice.due_dates.reduce((sum, dd) => sum + dd.amount, 0);
+            if (Math.abs(totalDueDates - invoice.total_amount) > 0.01) {
+                logger.warn(`⚠️ Facture ${invoice.sage_id}: Total échéances (${totalDueDates}) ≠ Montant facture (${invoice.total_amount})`);
+                validationErrors++;
+            }
+        });
 
-            const dueDates = dueDatesResult.recordset.map(dueDate => ({
-                due_date: dueDate.due_date,
-                amount: dueDate.amount
-            }));
-
-            // Formater la facture pour l'API
-            formattedInvoices.push({
-                sage_id: invoice.sage_id,
-                invoice_number: invoice.invoice_number,
-                customer_sage_id: invoice.customer_sage_id,
-                reference: invoice.reference,
-                type: invoice.type,
-                invoice_date: invoice.invoice_date,
-                currency: invoice.currency,
-                total_amount: invoice.total_amount,
-                notes: invoice.notes,
-                created_by: invoice.created_by,
-                due_dates: dueDates
-            });
+        if (validationErrors > 0) {
+            logger.warn(`⚠️ ${validationErrors} factures ont des incohérences de montants`);
         }
 
         // Envoyer les factures à l'API Laravel
@@ -269,17 +293,21 @@ async function syncInvoices() {
 
             if (syncedIds.length > 0) {
                 // Construire la clause IN pour la requête SQL
-                const idPlaceholders = syncedIds.map(() => '?').join(',');
+                const idList = syncedIds.map(id => `'${id}'`).join(',');
 
-                // Marquer les factures comme synchronisées
+                // Marquer les factures et échéances comme synchronisées
                 if (config.sync.deleteAfterSync) {
                     await pool.request()
-                        .query(`DELETE FROM anonymes_invoices WHERE sage_id IN (${idPlaceholders})`, [...syncedIds]);
-                    logger.info(`${syncedIds.length} factures supprimées après synchronisation`);
+                        .query(`DELETE FROM anonymes_due_dates WHERE invoice_sage_id IN (${idList})`);
+                    await pool.request()
+                        .query(`DELETE FROM anonymes_invoices WHERE sage_id IN (${idList})`);
+                    logger.info(`${syncedIds.length} factures et leurs échéances supprimées après synchronisation`);
                 } else {
                     await pool.request()
-                        .query(`UPDATE anonymes_invoices SET synced = 1, sync_date = GETDATE() WHERE sage_id IN (${idPlaceholders})`, [...syncedIds]);
-                    logger.info(`${syncedIds.length} factures marquées comme synchronisées`);
+                        .query(`UPDATE anonymes_invoices SET synced = 1, sync_date = GETDATE() WHERE sage_id IN (${idList})`);
+                    await pool.request()
+                        .query(`UPDATE anonymes_due_dates SET synced = 1, sync_date = GETDATE() WHERE invoice_sage_id IN (${idList})`);
+                    logger.info(`${syncedIds.length} factures et leurs échéances marquées comme synchronisées`);
                 }
             }
 
@@ -290,7 +318,53 @@ async function syncInvoices() {
         }
     } catch (err) {
         logger.error(`Erreur lors de la synchronisation des factures: ${err.message}`);
+        if (err.response && err.response.data) {
+            logger.error(`Détails de l'erreur API: ${JSON.stringify(err.response.data)}`);
+        }
         return 0;
+    } finally {
+        if (pool) {
+            await pool.close();
+        }
+    }
+}
+
+/**
+ * Affiche les statistiques de synchronisation
+ */
+async function displaySyncStats() {
+    let pool = null;
+
+    try {
+        pool = await sql.connect(sqlConfig);
+
+        const stats = await pool.request().query(`
+            SELECT 
+                (SELECT COUNT(*) FROM anonymes_customers) AS total_clients,
+                (SELECT COUNT(*) FROM anonymes_customers WHERE synced = 1) AS clients_synchronises,
+                (SELECT COUNT(*) FROM anonymes_customers WHERE synced = 0 OR synced IS NULL) AS clients_en_attente,
+                (SELECT COUNT(*) FROM anonymes_invoices) AS total_factures,
+                (SELECT COUNT(*) FROM anonymes_invoices WHERE synced = 1) AS factures_synchronisees,
+                (SELECT COUNT(*) FROM anonymes_invoices WHERE synced = 0 OR synced IS NULL) AS factures_en_attente,
+                (SELECT COUNT(*) FROM anonymes_due_dates) AS total_echeances,
+                (SELECT COUNT(*) FROM anonymes_due_dates WHERE synced = 1) AS echeances_synchronisees,
+                (SELECT COUNT(*) FROM anonymes_due_dates WHERE synced = 0 OR synced IS NULL) AS echeances_en_attente,
+                (SELECT SUM(total_amount) FROM anonymes_invoices WHERE synced = 0 OR synced IS NULL) AS montant_en_attente
+        `);
+
+        const data = stats.recordset[0];
+        
+        logger.info('📊 === STATISTIQUES DE SYNCHRONISATION ===');
+        logger.info(`👥 Clients: ${data.clients_synchronises}/${data.total_clients} synchronisés (${data.clients_en_attente} en attente)`);
+        logger.info(`📄 Factures: ${data.factures_synchronisees}/${data.total_factures} synchronisées (${data.factures_en_attente} en attente)`);
+        logger.info(`📅 Échéances: ${data.echeances_synchronisees}/${data.total_echeances} synchronisées (${data.echeances_en_attente} en attente)`);
+        if (data.montant_en_attente) {
+            logger.info(`💰 Montant en attente: ${data.montant_en_attente.toLocaleString('fr-FR')} XOF`);
+        }
+        logger.info('===============================================');
+
+    } catch (err) {
+        logger.error(`Erreur lors de l'affichage des statistiques: ${err.message}`);
     } finally {
         if (pool) {
             await pool.close();
@@ -304,19 +378,24 @@ async function syncInvoices() {
 async function runSyncCycle() {
     try {
         logger.info('================================  DEBUT  ================================================');
-
         logger.info('Démarrage du cycle de synchronisation');
 
-        // Synchroniser les clients
+        // Afficher les statistiques avant synchronisation
+        await displaySyncStats();
+
+        // Synchroniser les clients d'abord
+        logger.info('👥 === SYNCHRONISATION DES CLIENTS ===');
         const customersCount = await syncCustomers();
 
-        // Synchroniser les factures
+        // Synchroniser les factures ensuite
+        logger.info('📄 === SYNCHRONISATION DES FACTURES ===');
         const invoicesCount = await syncInvoices();
 
+        // Afficher les statistiques après synchronisation
+        await displaySyncStats();
+
         logger.info(`Fin du cycle de synchronisation: ${customersCount} clients et ${invoicesCount} factures synchronisés`);
-
         logger.info('==================================  FIN  ==============================================');
-
 
     } catch (err) {
         logger.error(`Erreur lors du cycle de synchronisation: ${err.message}`);
@@ -355,6 +434,17 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
     logger.error('Promesse rejetée non gérée:');
     logger.error(reason);
+});
+
+// Gérer l'arrêt propre du service
+process.on('SIGINT', async () => {
+    logger.info('Signal d\'arrêt reçu (SIGINT)');
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    logger.info('Signal d\'arrêt reçu (SIGTERM)');
+    process.exit(0);
 });
 
 // Démarrer l'application
