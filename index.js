@@ -57,7 +57,7 @@ try {
             }
         },
         api: {
-            url: 'https://sk-cloud-api-app.digita.sn/api/sage',
+            url: 'https://app-skd-cloud-api-prod.digita.sn/api/sage',
             key: 'sk-digitanalh2HRpxrDVJ6bkk5Gy0iHehnf6i9Czhtiv7rG82REOENWLzK42Sv6qGW04cLz4j3hhyf44yJ3d8jShdudGl9NzvuGUfQHPkiHg1YtUL9dEWsbZ55yrJYY'
         },
         sync: {
