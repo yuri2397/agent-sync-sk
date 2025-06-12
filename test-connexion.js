@@ -1,34 +1,45 @@
 const sql = require('mssql');
 
-// Configuration de la connexion
+// Configuration de la connexion avec authentification Windows
 const config = {
-    server: 'localhost',
-    user: 'sa',
-    password: 'Matrix@2397!',
+    server: 'PC2\\SAGE100', // nom de votre instance SQL Server
+    database: 'SK DISTRIBUTION ELACTRON',
+    port: 1433, // port par défaut SQL Server
     options: {
-        trustServerCertificate: true,
+        trustedConnection: true, // Authentification Windows
         encrypt: false,
+        trustServerCertificate: true,
         enableArithAbort: true,
-        trustedConnection: true,
         integratedSecurity: true
+    },
+    pool: {
+        max: 10,
+        min: 0,
+        idleTimeoutMillis: 30000
     }
 };
 
-// Fonction de test
-async function testConnection() {
+async function compterElementsTable() {
     try {
-        console.log('Tentative de connexion à SQL Server...');
+        // Connexion à la base de données
+        console.log('Connexion à la base de données...');
         await sql.connect(config);
-        console.log('Connexion réussie!');
 
-        // Exécution d'une requête simple pour tester
-        const result = await sql.query`SELECT @@VERSION as version`;
-        console.log('Version SQL Server:', result.recordset[0].version);
+        // Exécution de la requête COUNT
+        const result = await sql.query('SELECT COUNT(*) as total FROM anonymes_due_dates');
 
-        await sql.close();
+        // Affichage du résultat
+        const nombreElements = result.recordset[0].total;
+        console.log(`Nombre d'éléments dans la table 'anonymes_due_dates' : ${nombreElements}`);
+
     } catch (err) {
-        console.error('Erreur de connexion:', err);
+        console.error('Erreur lors de la connexion ou de la requête :', err);
+    } finally {
+        // Fermeture de la connexion
+        await sql.close();
+        console.log('Connexion fermée.');
     }
 }
 
-testConnection();
+// Exécution du script
+compterElementsTable();
