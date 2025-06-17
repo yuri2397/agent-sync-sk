@@ -2,15 +2,14 @@ const sql = require('mssql');
 // npm i msnodesqlv8
 // Configuration de la connexion avec authentification Windows
 const config = {
-    server: 'PC2\\SAGE100', // nom de votre instance SQL Server
-    database: 'SK DISTRIBUTION ELACTRON',
-    port: 1433, // port par défaut SQL Server
+    server: "PC2\\SAGE100",
+    database: "SK DISTRIBUTION ELACTRON",
+    user: "sync_user",
+    password: "VotreMotDePasse123!",
     options: {
-        trustedConnection: true, // Authentification Windows
-        encrypt: false,
-        trustServerCertificate: true,
-        enableArithAbort: true,
-        integratedSecurity: true
+        "trustServerCertificate": true,
+        "encrypt": false,
+        "enableArithAbort": true
     },
     pool: {
         max: 10,
