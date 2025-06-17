@@ -1,8 +1,7 @@
 {
     "database": {
-        "server": "localhost",
-        "user": "sa",
-        "password": "Matrix@2397!",
+        "server": "PC2\\SAGE100",
+        "database": "SK DISTRIBUTION ELACTRON",
         "options": {
             "trustServerCertificate": true,
             "encrypt": false,

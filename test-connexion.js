@@ -1,5 +1,5 @@
 const sql = require('mssql');
-
+// npm i msnodesqlv8
 // Configuration de la connexion avec authentification Windows
 const config = {
     server: 'PC2\\SAGE100', // nom de votre instance SQL Server
